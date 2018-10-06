@@ -36,6 +36,7 @@ jobs:
                 command: |
                     apk add --update git
                     apk add --update openssh
+                    apk add --update curl
                     tlmgr install ulem latexdiff
             - run:
                 name: Git settings
@@ -70,7 +71,8 @@ jobs:
             - run:
                 name: Commit to repository
                 command: |
-                        git checkout -b release-pdf
+                        ln -sf  /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
+                        git checkout release-pdf || git checkout -b release-pdf
                         mkdir -p dst
                         cp report.pdf report-diff.pdf dst/
                         git add dst/
