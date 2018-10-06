@@ -29,6 +29,9 @@ jobs:
     deploy:
         docker:
             - image: paperist/alpine-texlive-ja:latest
+        environment:
+            - TARGET_FILE: "report"
+            - TZ: "JST-9"
 
         steps:
             - run:
@@ -43,6 +46,8 @@ jobs:
                 command: |
                     git config --global user.email "${GIT_EMAIL}"
                     git config --global user.name "${GIT_USERNAME}"
+
+
             - checkout
             - run:
                 name: Create artifact directory
@@ -51,8 +56,8 @@ jobs:
                 name: Generating current version
                 command: |
                     cp .latexmkrc ~/.latexmkrc
-                    latexmk report.tex
-                    cp report.pdf artifacts/
+                    latexmk ${TARGET_FILE}.tex
+                    cp ${TARGET_FILE}.pdf artifacts/
             - run:
                 name: Generating diff
                 command: |
@@ -61,31 +66,31 @@ jobs:
                     export that=`mktemp $TMPDIR/latex-diff.XXXXXX`
 
                     # gitからソースを取得
-                    git show "HEAD:report.tex" > $that
+                    git show "master:${TARGET_FILE}.tex" > $that
 
-                    latexdiff -e utf8 -t CFONT -s COLOR --force "$that" report.tex > report-diff.tex
-                    latexmk report-diff.tex
-                    cp report-diff.pdf artifacts/
+                    latexdiff -e utf8 -t CFONT -s COLOR --force "$that" ${TARGET_FILE}.tex > ${TARGET_FILE}-diff.tex
+                    latexmk ${TARGET_FILE}-diff.tex
+                    cp ${TARGET_FILE}-diff.pdf artifacts/
 
                     rm -rf $TMPDIR
             - run:
                 name: Commit to repository
                 command: |
-                        ln -sf  /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
                         git checkout release-pdf || git checkout -b release-pdf
                         mkdir -p dst
-                        cp report.pdf report-diff.pdf dst/
+                        cp ${TARGET_FILE}.pdf ${TARGET_FILE}-diff.pdf dst/
                         git add dst/
                         git commit -m "[CircleCI] Generate PDF @$(date +'%Y/%m/%d %I:%M') [ci skip]"
                         git push -u origin release-pdf
             - run:
                 name: Upload to slack
                 command: |
-                    curl -F file=@report.pdf -F channels=#${SLACK_CHANNEL} -F token=${SLACK_BOT_API_TOKEN} https://slack.com/api/files.upload
-                    curl -F file=@report-diff.pdf -F channels=#${SLACK_CHANNEL} -F token=${SLACK_BOT_API_TOKEN} https://slack.com/api/files.upload
+                    curl -F file=@${TARGET_FILE}.pdf -F channels=#${SLACK_CHANNEL} -F token=${SLACK_BOT_API_TOKEN} https://slack.com/api/files.upload
+                    curl -F file=@${TARGET_FILE}-diff.pdf -F channels=#${SLACK_CHANNEL} -F token=${SLACK_BOT_API_TOKEN} https://slack.com/api/files.upload
 
             - store_artifacts:
                 path: artifacts
+
 
 workflows:
     version: 2
@@ -97,4 +102,5 @@ workflows:
                     - build
                 filters:
                     branches:
-                        only: master
+                        only:
+                            - master
