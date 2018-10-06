@@ -1,0 +1,18 @@
+# prh version
+version: 1
+rules:
+    # よくある表記揺れ
+    - expected: "インタフェイス"
+      patterns:
+          - "インターフェイス"
+
+    # 句読点
+    - expected: ","
+      patterns:
+          - "、"
+          - "，"
+
+    - expected: "." # escape
+      patterns:
+          - "。"
+          - "．"

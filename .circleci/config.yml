@@ -1,0 +1,98 @@
+version: 2
+jobs:
+    build:
+        working_directory: ~/workspace
+        docker:
+            - image: circleci/node:10
+              environment:
+                  TZ: Asia/Tokyo
+
+        steps:
+            - checkout
+            - restore_cache:
+                keys:
+                - v1-dependencies-{{ checksum "package.json" }}
+                - v1-dependencies-
+
+            - run:
+                name: Install dependencies
+                command: npm install
+            - run:
+                name: Check textlint
+                command: npm run --silent textlint-check
+
+            - save_cache:
+                key: v1-dependencies-{{ checksum "package.json" }}
+                paths:
+                    - ~/workspace/node_modules
+
+    deploy:
+        docker:
+            - image: paperist/alpine-texlive-ja:latest
+
+        steps:
+            - run:
+                name: Install dependancies
+                command: |
+                    apk add --update git
+                    apk add --update openssh
+                    tlmgr install ulem latexdiff
+            - run:
+                name: Git settings
+                command: |
+                    git config --global user.email "${GIT_EMAIL}"
+                    git config --global user.name "${GIT_USERNAME}"
+            - checkout
+            - run:
+                name: Create artifact directory
+                command: mkdir -p artifacts/
+            - run:
+                name: Generating current version
+                command: |
+                    cp .latexmkrc ~/.latexmkrc
+                    latexmk report.tex
+                    cp report.pdf artifacts/
+            - run:
+                name: Generating diff
+                command: |
+                    # 作業用の一時ファイルを作成
+                    TMPDIR=$(mktemp -d /tmp/git-latexdiff.XXXXXX)
+                    export that=`mktemp $TMPDIR/latex-diff.XXXXXX`
+
+                    # gitからソースを取得
+                    git show "HEAD:report.tex" > $that
+
+                    latexdiff -e utf8 -t CFONT -s COLOR --force "$that" report.tex > report-diff.tex
+                    latexmk report-diff.tex
+                    cp report-diff.pdf artifacts/
+
+                    rm -rf $TMPDIR
+            - run:
+                name: Commit to repository
+                command: |
+                        git checkout -b release-pdf
+                        mkdir -p dst
+                        cp report.pdf report-diff.pdf dst/
+                        git add dst/
+                        git commit -m "[CircleCI] Generate PDF @$(date +'%Y/%m/%d %I:%M') [ci skip]"
+                        git push -u origin release-pdf
+            - run:
+                name: Upload to slack
+                command: |
+                    curl -F file=@report.pdf -F channels=#${SLACK_CHANNEL} -F token=${SLACK_BOT_API_TOKEN} https://slack.com/api/files.upload
+                    curl -F file=@report-diff.pdf -F channels=#${SLACK_CHANNEL} -F token=${SLACK_BOT_API_TOKEN} https://slack.com/api/files.upload
+
+            - store_artifacts:
+                path: artifacts
+
+workflows:
+    version: 2
+    build-deploy:
+        jobs:
+            - build
+            - deploy:
+                requires:
+                    - build
+                filters:
+                    branches:
+                        only: master
